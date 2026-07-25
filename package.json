@@ -1,0 +1,24 @@
+{
+  "name": "project-alpha",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Alpha Research Platform (ARP) — modular monorepo",
+  "engines": {
+    "node": ">=20"
+  },
+  "packageManager": "pnpm@11.15.1",
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "dev:web": "turbo run dev --filter=web",
+    "dev:api": "pnpm --filter api run dev",
+    "lint": "turbo run lint",
+    "type-check": "turbo run type-check",
+    "test": "turbo run test",
+    "clean": "turbo run clean && rm -rf node_modules"
+  },
+  "devDependencies": {
+    "turbo": "^2.5.0",
+    "typescript": "^5.7.0"
+  }
+}

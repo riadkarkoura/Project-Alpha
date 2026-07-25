@@ -1,0 +1,2 @@
+class ResearchSessionNotFoundError(ValueError):
+    pass

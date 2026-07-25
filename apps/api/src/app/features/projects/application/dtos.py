@@ -9,8 +9,13 @@ class CreateProjectRequestDTO:
 
 
 @dataclass(frozen=True)
-class CreateProjectResponseDTO:
+class ProjectDTO:
     id: UUID
     name: str
     created_at: datetime
     updated_at: datetime
+
+
+@dataclass(frozen=True)
+class GetProjectRequestDTO:
+    project_id: UUID

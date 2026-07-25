@@ -1,7 +1,4 @@
-from app.features.projects.application.dtos import (
-    CreateProjectRequestDTO,
-    CreateProjectResponseDTO,
-)
+from app.features.projects.application.dtos import CreateProjectRequestDTO, ProjectDTO
 from app.features.projects.domain.exceptions import InvalidProjectNameError
 from app.features.projects.domain.repositories.project_repository import ProjectRepository
 
@@ -13,10 +10,10 @@ class CreateProjectUseCase:
     def __init__(self, repository: ProjectRepository) -> None:
         self._repository = repository
 
-    async def execute(self, request: CreateProjectRequestDTO) -> CreateProjectResponseDTO:
+    async def execute(self, request: CreateProjectRequestDTO) -> ProjectDTO:
         name = self._validate_name(request.name)
         project = await self._repository.create(name)
-        return CreateProjectResponseDTO(
+        return ProjectDTO(
             id=project.id,
             name=project.name,
             created_at=project.created_at,
