@@ -12,7 +12,7 @@ from app.core.logging import configure_logging
 from app.infrastructure.database.connection import close_pool
 from app.presentation.api.v1 import router as api_v1_router
 
-DEV_ALLOWED_ORIGINS = ["http://localhost:3000"]
+DEV_ALLOWED_ORIGINS = ["http://localhost:3000", "http://localhost:3001"]
 
 logger = logging.getLogger("app.request")
 
