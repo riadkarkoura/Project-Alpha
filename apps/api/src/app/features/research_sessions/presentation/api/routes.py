@@ -1,11 +1,17 @@
 from datetime import datetime
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel
 
 from app.core.security import verify_api_key
 from app.features.projects.domain.exceptions import ProjectNotFoundError
+from app.features.research_engine.application.use_cases.run_research_worker import (
+    RunResearchWorkerUseCase,
+)
+from app.features.research_engine.presentation.dependencies import (
+    get_run_research_worker_use_case,
+)
 from app.features.research_sessions.application.dtos import (
     CreateResearchSessionRequestDTO,
     ListResearchSessionsRequestDTO,
@@ -61,8 +67,12 @@ def _to_response(dto: ResearchSessionDTO) -> ResearchSessionResponse:
 async def create_research_session(
     project_id: UUID,
     payload: CreateResearchSessionRequest,
+    background_tasks: BackgroundTasks,
     use_case: CreateResearchSessionUseCase = Depends(  # noqa: B008
         get_create_research_session_use_case
+    ),
+    worker_use_case: RunResearchWorkerUseCase = Depends(  # noqa: B008
+        get_run_research_worker_use_case
     ),
 ) -> ResearchSessionResponse:
     try:
@@ -72,6 +82,7 @@ async def create_research_session(
     except ProjectNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
+    background_tasks.add_task(worker_use_case.execute, result.id)
     return _to_response(result)
 
 

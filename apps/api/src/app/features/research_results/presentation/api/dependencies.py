@@ -1,8 +1,8 @@
 import asyncpg
 from fastapi import Depends
 
-from app.features.research_results.application.use_cases.create_research_result import (
-    CreateResearchResultUseCase,
+from app.features.research_results.application.use_cases.get_research_result import (
+    GetResearchResultUseCase,
 )
 from app.features.research_results.domain.repositories.research_result_repository import (
     ResearchResultRepository,
@@ -25,12 +25,12 @@ async def get_research_result_repository(
     return PostgresResearchResultRepository(pool)
 
 
-def get_create_research_result_use_case(
+def get_get_research_result_use_case(
     research_session_repository: ResearchSessionRepository = Depends(  # noqa: B008
         get_research_session_repository
     ),
     research_result_repository: ResearchResultRepository = Depends(  # noqa: B008
         get_research_result_repository
     ),
-) -> CreateResearchResultUseCase:
-    return CreateResearchResultUseCase(research_session_repository, research_result_repository)
+) -> GetResearchResultUseCase:
+    return GetResearchResultUseCase(research_session_repository, research_result_repository)

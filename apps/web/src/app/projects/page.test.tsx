@@ -8,6 +8,8 @@ import { createResearchSession, listResearchSessions } from "@/lib/api/researchS
 
 import ProjectsPage from "./page";
 
+const SESSION_POLL_INTERVAL_MS = 1500;
+
 vi.mock("@/lib/api/projects", () => ({
   createProject: vi.fn(),
   listProjects: vi.fn(),
@@ -40,6 +42,18 @@ const CREATED_SESSION = {
   project_id: CREATED_PROJECT.id,
   marketplace: "amazon" as const,
   status: "pending" as const,
+  created_at: "2026-07-22T00:00:00Z",
+  updated_at: "2026-07-22T00:00:00Z",
+};
+
+const RESEARCH_RESULT = {
+  id: "33333333-3333-3333-3333-333333333333",
+  research_session_id: CREATED_SESSION.id,
+  opportunity_score: 84,
+  demand_level: "high",
+  competition_level: "medium",
+  profit_level: "good",
+  summary: "This product shows promising demand with manageable competition.",
   created_at: "2026-07-22T00:00:00Z",
   updated_at: "2026-07-22T00:00:00Z",
 };
@@ -82,6 +96,11 @@ async function startResearchViaUi() {
 
   return user;
 }
+
+// The session-status poll runs on a real interval (SESSION_POLL_INTERVAL_MS),
+// so assertions that depend on a poll tick use a real-time findBy/waitFor
+// timeout comfortably longer than one interval.
+const POLL_WAIT_TIMEOUT_MS = SESSION_POLL_INTERVAL_MS + 2000;
 
 describe("ProjectsPage", () => {
   it("loads and lists existing projects on mount", async () => {
@@ -197,11 +216,12 @@ describe("ProjectsPage", () => {
     expect(mockedCreateResearchSession).not.toHaveBeenCalled();
   });
 
-  it("starts research and displays the created session", async () => {
+  it("starts research and displays the created session as pending", async () => {
     await startResearchViaUi();
 
     const sessionItem = await screen.findByText("pending");
     expect(sessionItem.closest("li")).toHaveTextContent("Amazon");
+    expect(sessionItem.closest("li")).toHaveTextContent("Researching...");
     expect(mockedCreateResearchSession).toHaveBeenCalledWith(CREATED_PROJECT.id, "amazon");
   });
 
@@ -220,25 +240,13 @@ describe("ProjectsPage", () => {
     });
   });
 
-  it("loads and displays the research result when View Result is clicked, and refreshes the session status", async () => {
-    mockedGetResearchResult.mockResolvedValue({
-      id: "33333333-3333-3333-3333-333333333333",
-      research_session_id: CREATED_SESSION.id,
-      opportunity_score: 84,
-      demand_level: "high",
-      competition_level: "medium",
-      profit_level: "good",
-      summary: "This product shows promising demand with manageable competition.",
-      created_at: "2026-07-22T00:00:00Z",
-      updated_at: "2026-07-22T00:00:00Z",
-    });
-
-    const user = await startResearchViaUi();
+  it("polls until the session completes and automatically displays the result", async () => {
+    await startResearchViaUi();
 
     mockedListResearchSessions.mockResolvedValue([{ ...CREATED_SESSION, status: "completed" }]);
-    await user.click(screen.getByRole("button", { name: "View Result" }));
+    mockedGetResearchResult.mockResolvedValue(RESEARCH_RESULT);
 
-    expect(await screen.findByText("84")).toBeInTheDocument();
+    expect(await screen.findByText("84", {}, { timeout: POLL_WAIT_TIMEOUT_MS })).toBeInTheDocument();
     expect(screen.getByText("High")).toBeInTheDocument();
     expect(screen.getByText("Medium")).toBeInTheDocument();
     expect(screen.getByText("Good")).toBeInTheDocument();
@@ -246,22 +254,39 @@ describe("ProjectsPage", () => {
       screen.getByText("This product shows promising demand with manageable competition.")
     ).toBeInTheDocument();
     expect(mockedGetResearchResult).toHaveBeenCalledWith(CREATED_SESSION.id);
-    expect(screen.queryByRole("button", { name: "View Result" })).not.toBeInTheDocument();
     expect(await screen.findByText("completed")).toBeInTheDocument();
   });
 
-  it("shows an error message when loading the research result fails", async () => {
+  it("stops polling and shows an error when the session fails", async () => {
+    await startResearchViaUi();
+
+    mockedListResearchSessions.mockResolvedValue([{ ...CREATED_SESSION, status: "failed" }]);
+
+    expect(
+      await screen.findByText(
+        "Research failed. Please start a new research session.",
+        {},
+        { timeout: POLL_WAIT_TIMEOUT_MS }
+      )
+    ).toBeInTheDocument();
+    expect(mockedGetResearchResult).not.toHaveBeenCalled();
+  });
+
+  it("shows a retry option when fetching the completed result fails", async () => {
+    await startResearchViaUi();
+
+    mockedListResearchSessions.mockResolvedValue([{ ...CREATED_SESSION, status: "completed" }]);
     mockedGetResearchResult.mockRejectedValue(new Error("network error"));
 
-    const user = await startResearchViaUi();
+    expect(
+      await screen.findByRole("alert", {}, { timeout: POLL_WAIT_TIMEOUT_MS })
+    ).toHaveTextContent("Something went wrong while loading the research result. Please try again.");
+    const retryButton = screen.getByRole("button", { name: "Retry" });
 
-    await user.click(screen.getByRole("button", { name: "View Result" }));
+    mockedGetResearchResult.mockResolvedValue(RESEARCH_RESULT);
+    const user = userEvent.setup();
+    await user.click(retryButton);
 
-    await waitFor(() => {
-      expect(screen.getByRole("alert")).toHaveTextContent(
-        "Something went wrong while loading the research result. Please try again."
-      );
-    });
-    expect(screen.getByRole("button", { name: "View Result" })).toBeInTheDocument();
+    expect(await screen.findByText("84")).toBeInTheDocument();
   });
 });

@@ -4,7 +4,7 @@ from uuid import UUID
 
 
 @dataclass(frozen=True)
-class CreateResearchResultRequestDTO:
+class GetResearchResultRequestDTO:
     research_session_id: UUID
 
 

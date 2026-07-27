@@ -5,12 +5,13 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from app.core.security import verify_api_key
-from app.features.research_results.application.dtos import CreateResearchResultRequestDTO
-from app.features.research_results.application.use_cases.create_research_result import (
-    CreateResearchResultUseCase,
+from app.features.research_results.application.dtos import GetResearchResultRequestDTO
+from app.features.research_results.application.use_cases.get_research_result import (
+    GetResearchResultUseCase,
 )
+from app.features.research_results.domain.exceptions import ResearchResultNotFoundError
 from app.features.research_results.presentation.api.dependencies import (
-    get_create_research_result_use_case,
+    get_get_research_result_use_case,
 )
 from app.features.research_sessions.domain.exceptions import ResearchSessionNotFoundError
 
@@ -36,15 +37,13 @@ class ResearchResultResponse(BaseModel):
 @router.get("", response_model=ResearchResultResponse, status_code=200)
 async def get_research_result(
     research_session_id: UUID,
-    use_case: CreateResearchResultUseCase = Depends(  # noqa: B008
-        get_create_research_result_use_case
-    ),
+    use_case: GetResearchResultUseCase = Depends(get_get_research_result_use_case),  # noqa: B008
 ) -> ResearchResultResponse:
     try:
         result = await use_case.execute(
-            CreateResearchResultRequestDTO(research_session_id=research_session_id)
+            GetResearchResultRequestDTO(research_session_id=research_session_id)
         )
-    except ResearchSessionNotFoundError as exc:
+    except (ResearchSessionNotFoundError, ResearchResultNotFoundError) as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
     return ResearchResultResponse(

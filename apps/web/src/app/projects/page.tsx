@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,6 +12,7 @@ import type { Marketplace, Project, ResearchResult, ResearchSession } from "@pro
 
 const MIN_NAME_LENGTH = 3;
 const MAX_NAME_LENGTH = 100;
+const SESSION_POLL_INTERVAL_MS = 1500;
 
 const MARKETPLACE_OPTIONS: { value: Marketplace; label: string }[] = [
   { value: "amazon", label: "Amazon" },
@@ -63,8 +64,13 @@ export default function ProjectsPage() {
   const [loadSessionsError, setLoadSessionsError] = useState<string | null>(null);
 
   const [researchResults, setResearchResults] = useState<Record<string, ResearchResult>>({});
-  const [loadingResultIds, setLoadingResultIds] = useState<Set<string>>(new Set());
+  const [fetchingResultIds, setFetchingResultIds] = useState<Set<string>>(new Set());
   const [resultErrors, setResultErrors] = useState<Record<string, string>>({});
+
+  const researchSessionsRef = useRef<ResearchSession[]>([]);
+  useEffect(() => {
+    researchSessionsRef.current = researchSessions;
+  }, [researchSessions]);
 
   useEffect(() => {
     let cancelled = false;
@@ -132,7 +138,75 @@ export default function ProjectsPage() {
     };
   }, [selectedProjectId]);
 
+  // Poll session status while research is in flight, so pending/running sessions
+  // started by this or another client eventually reflect their real status.
+  useEffect(() => {
+    if (!selectedProjectId) {
+      return;
+    }
+
+    const intervalId = setInterval(() => {
+      const hasInFlightSession = researchSessionsRef.current.some(
+        (session) => session.status === "pending" || session.status === "running"
+      );
+      if (!hasInFlightSession) {
+        return;
+      }
+
+      listResearchSessions(selectedProjectId)
+        .then(setResearchSessions)
+        .catch(() => {
+          // Transient poll failures are silently retried on the next tick.
+        });
+    }, SESSION_POLL_INTERVAL_MS);
+
+    return () => {
+      clearInterval(intervalId);
+    };
+  }, [selectedProjectId]);
+
   const selectedProject = projects.find((project) => project.id === selectedProjectId) ?? null;
+
+  async function fetchResult(sessionId: string) {
+    setFetchingResultIds((ids) => new Set(ids).add(sessionId));
+    setResultErrors((errors) => {
+      const next = { ...errors };
+      delete next[sessionId];
+      return next;
+    });
+
+    try {
+      const result = await getResearchResult(sessionId);
+      setResearchResults((results) => ({ ...results, [sessionId]: result }));
+    } catch {
+      setResultErrors((errors) => ({
+        ...errors,
+        [sessionId]: "Something went wrong while loading the research result. Please try again.",
+      }));
+    } finally {
+      setFetchingResultIds((ids) => {
+        const next = new Set(ids);
+        next.delete(sessionId);
+        return next;
+      });
+    }
+  }
+
+  // Auto-fetch and display the result the moment a session completes.
+  useEffect(() => {
+    for (const session of researchSessions) {
+      const alreadyHasResult = session.id in researchResults;
+      const alreadyFetching = fetchingResultIds.has(session.id);
+      const alreadyErrored = session.id in resultErrors;
+
+      if (session.status === "completed" && !alreadyHasResult && !alreadyFetching && !alreadyErrored) {
+        queueMicrotask(() => {
+          void fetchResult(session.id);
+        });
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [researchSessions]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -182,36 +256,6 @@ export default function ProjectsPage() {
       setResearchError("Something went wrong while starting research. Please try again.");
     } finally {
       setIsStartingResearch(false);
-    }
-  }
-
-  async function handleViewResult(sessionId: string) {
-    setLoadingResultIds((ids) => new Set(ids).add(sessionId));
-    setResultErrors((errors) => {
-      const next = { ...errors };
-      delete next[sessionId];
-      return next;
-    });
-
-    try {
-      const result = await getResearchResult(sessionId);
-      setResearchResults((results) => ({ ...results, [sessionId]: result }));
-
-      if (selectedProjectId) {
-        const refreshed = await listResearchSessions(selectedProjectId);
-        setResearchSessions(refreshed);
-      }
-    } catch {
-      setResultErrors((errors) => ({
-        ...errors,
-        [sessionId]: "Something went wrong while loading the research result. Please try again.",
-      }));
-    } finally {
-      setLoadingResultIds((ids) => {
-        const next = new Set(ids);
-        next.delete(sessionId);
-        return next;
-      });
     }
   }
 
@@ -336,7 +380,7 @@ export default function ProjectsPage() {
             <ul className="flex flex-col gap-3">
               {researchSessions.map((session) => {
                 const result = researchResults[session.id];
-                const isLoadingResult = loadingResultIds.has(session.id);
+                const isFetchingResult = fetchingResultIds.has(session.id);
                 const resultError = resultErrors[session.id];
 
                 return (
@@ -352,22 +396,34 @@ export default function ProjectsPage() {
                       <span className="text-muted-foreground">{session.status}</span>
                     </div>
 
-                    {!result && (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        disabled={isLoadingResult}
-                        onClick={() => handleViewResult(session.id)}
-                      >
-                        {isLoadingResult ? "Loading..." : "View Result"}
-                      </Button>
+                    {(session.status === "pending" || session.status === "running") && (
+                      <p className="text-muted-foreground">Researching...</p>
+                    )}
+
+                    {session.status === "failed" && (
+                      <p role="alert" className="text-sm text-destructive">
+                        Research failed. Please start a new research session.
+                      </p>
+                    )}
+
+                    {session.status === "completed" && isFetchingResult && !result && (
+                      <p className="text-muted-foreground">Loading result...</p>
                     )}
 
                     {resultError && (
-                      <p role="alert" className="text-sm text-destructive">
-                        {resultError}
-                      </p>
+                      <div className="flex flex-col gap-2">
+                        <p role="alert" className="text-sm text-destructive">
+                          {resultError}
+                        </p>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => void fetchResult(session.id)}
+                        >
+                          Retry
+                        </Button>
+                      </div>
                     )}
 
                     {result && (

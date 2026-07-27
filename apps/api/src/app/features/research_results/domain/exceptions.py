@@ -1,0 +1,2 @@
+class ResearchResultNotFoundError(ValueError):
+    pass
