@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createProject, listProjects } from "@/lib/api/projects";
+import { listProductIntelligence } from "@/lib/api/productIntelligence";
 import { getResearchResult } from "@/lib/api/researchResults";
 import { createResearchSession, listResearchSessions } from "@/lib/api/researchSessions";
 
@@ -24,11 +25,20 @@ vi.mock("@/lib/api/researchResults", () => ({
   getResearchResult: vi.fn(),
 }));
 
+vi.mock("@/lib/api/productIntelligence", () => ({
+  createProductIntelligence: vi.fn(),
+  listProductIntelligence: vi.fn(),
+  updateProductIntelligence: vi.fn(),
+  deleteProductIntelligence: vi.fn(),
+  markProductIntelligenceReadyForPublishing: vi.fn(),
+}));
+
 const mockedCreateProject = vi.mocked(createProject);
 const mockedListProjects = vi.mocked(listProjects);
 const mockedCreateResearchSession = vi.mocked(createResearchSession);
 const mockedListResearchSessions = vi.mocked(listResearchSessions);
 const mockedGetResearchResult = vi.mocked(getResearchResult);
+const mockedListProductIntelligence = vi.mocked(listProductIntelligence);
 
 const CREATED_PROJECT = {
   id: "11111111-1111-1111-1111-111111111111",
@@ -64,9 +74,11 @@ beforeEach(() => {
   mockedCreateResearchSession.mockReset();
   mockedListResearchSessions.mockReset();
   mockedGetResearchResult.mockReset();
+  mockedListProductIntelligence.mockReset();
 
   mockedListProjects.mockResolvedValue([]);
   mockedListResearchSessions.mockResolvedValue([]);
+  mockedListProductIntelligence.mockResolvedValue([]);
 });
 
 async function createProjectViaUi() {

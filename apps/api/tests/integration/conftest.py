@@ -4,6 +4,7 @@ import asyncpg
 import pytest
 
 from app.core.config import settings
+from app.infrastructure.database.connection import init_connection
 
 
 class SingleConnectionPool:
@@ -31,6 +32,8 @@ async def db_pool() -> AsyncIterator[SingleConnectionPool]:
         connection = await asyncpg.connect(dsn=settings.database_url)
     except (OSError, asyncpg.PostgresError) as exc:
         pytest.skip(f"Postgres is not reachable at {settings.database_url}: {exc}")
+
+    await init_connection(connection)
 
     transaction = connection.transaction()
     await transaction.start()

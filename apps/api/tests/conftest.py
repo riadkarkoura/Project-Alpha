@@ -1,9 +1,25 @@
+import dataclasses
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 import pytest
 
 from app.core.security import verify_api_key
+from app.features.product_intelligence.domain.entities.product_intelligence import (
+    ImageAsset,
+    Pricing,
+    ProductIntelligence,
+    ProductIntelligenceStatus,
+    PublishingMetadata,
+    SeoMetadata,
+    Specification,
+)
+from app.features.product_intelligence.domain.repositories.product_intelligence_repository import (
+    DEFAULT_PUBLISHING_METADATA,
+    DEFAULT_SEO_METADATA,
+    ProductIntelligenceRepository,
+)
 from app.features.projects.domain.entities.project import Project
 from app.features.projects.domain.repositories.project_repository import ProjectRepository
 from app.features.research_results.domain.entities.research_result import ResearchResult
@@ -115,6 +131,70 @@ class FakeResearchResultRepository(ResearchResultRepository):
         return self._results.get(research_session_id)
 
 
+class FakeProductIntelligenceRepository(ProductIntelligenceRepository):
+    def __init__(self) -> None:
+        self._products: dict[UUID, ProductIntelligence] = {}
+
+    async def create(
+        self,
+        *,
+        project_id: UUID,
+        research_session_id: UUID | None,
+        title: str,
+        subtitle: str | None = None,
+        description: str | None = None,
+        features: Sequence[str] = (),
+        specifications: Sequence[Specification] = (),
+        category: str | None = None,
+        tags: Sequence[str] = (),
+        keywords: Sequence[str] = (),
+        seo: SeoMetadata = DEFAULT_SEO_METADATA,
+        pricing: Pricing | None = None,
+        images: Sequence[ImageAsset] = (),
+        publishing: PublishingMetadata = DEFAULT_PUBLISHING_METADATA,
+    ) -> ProductIntelligence:
+        now = datetime.now(UTC)
+        product = ProductIntelligence(
+            id=uuid4(),
+            project_id=project_id,
+            research_session_id=research_session_id,
+            title=title,
+            subtitle=subtitle,
+            description=description,
+            features=tuple(features),
+            specifications=tuple(specifications),
+            category=category,
+            tags=tuple(tags),
+            keywords=tuple(keywords),
+            seo=seo,
+            pricing=pricing,
+            images=tuple(images),
+            publishing=publishing,
+            status=ProductIntelligenceStatus.DRAFT,
+            created_at=now,
+            updated_at=now,
+        )
+        self._products[product.id] = product
+        return product
+
+    async def get_by_id(self, product_id: UUID) -> ProductIntelligence | None:
+        return self._products.get(product_id)
+
+    async def list_by_project_id(self, project_id: UUID) -> list[ProductIntelligence]:
+        products = [p for p in self._products.values() if p.project_id == project_id]
+        return sorted(products, key=lambda product: product.created_at, reverse=True)
+
+    async def update(self, product: ProductIntelligence) -> ProductIntelligence:
+        if product.id not in self._products:
+            raise ValueError(f"Product {product.id} not found.")
+        updated = dataclasses.replace(product, updated_at=datetime.now(UTC))
+        self._products[product.id] = updated
+        return updated
+
+    async def delete(self, product_id: UUID) -> None:
+        self._products.pop(product_id, None)
+
+
 @pytest.fixture
 def fake_project_repository() -> FakeProjectRepository:
     return FakeProjectRepository()
@@ -128,6 +208,11 @@ def fake_research_session_repository() -> FakeResearchSessionRepository:
 @pytest.fixture
 def fake_research_result_repository() -> FakeResearchResultRepository:
     return FakeResearchResultRepository()
+
+
+@pytest.fixture
+def fake_product_intelligence_repository() -> FakeProductIntelligenceRepository:
+    return FakeProductIntelligenceRepository()
 
 
 @pytest.fixture(autouse=True)

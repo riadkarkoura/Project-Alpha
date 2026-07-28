@@ -10,6 +10,8 @@ import { getResearchResult } from "@/lib/api/researchResults";
 import { createResearchSession, listResearchSessions } from "@/lib/api/researchSessions";
 import type { Marketplace, Project, ResearchResult, ResearchSession } from "@project-alpha/types";
 
+import { ProductIntelligenceSection } from "./ProductIntelligenceSection";
+
 const MIN_NAME_LENGTH = 3;
 const MAX_NAME_LENGTH = 100;
 const SESSION_POLL_INTERVAL_MS = 1500;
@@ -452,6 +454,8 @@ export default function ProjectsPage() {
               })}
             </ul>
           )}
+
+          <ProductIntelligenceSection projectId={selectedProject.id} />
         </div>
       )}
     </div>
