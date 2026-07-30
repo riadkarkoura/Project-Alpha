@@ -1,0 +1,2 @@
+class AIProviderNotConfiguredError(ValueError):
+    pass
