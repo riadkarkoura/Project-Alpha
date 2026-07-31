@@ -8,3 +8,7 @@ class InvalidProductIntelligenceError(ValueError):
 
 class ProductNotReadyForPublishingError(ValueError):
     pass
+
+
+class AIGenerationFailedError(ValueError):
+    pass

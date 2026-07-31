@@ -9,6 +9,7 @@ from app.core.security import verify_api_key
 from app.features.product_intelligence.application.dtos import (
     CreateProductIntelligenceRequestDTO,
     DeleteProductIntelligenceRequestDTO,
+    GenerateProductDescriptionRequestDTO,
     GetProductIntelligenceRequestDTO,
     ListProductIntelligenceRequestDTO,
     MarkReadyForPublishingRequestDTO,
@@ -20,6 +21,9 @@ from app.features.product_intelligence.application.use_cases.create_product_inte
 )
 from app.features.product_intelligence.application.use_cases.delete_product_intelligence import (
     DeleteProductIntelligenceUseCase,
+)
+from app.features.product_intelligence.application.use_cases.generate_product_description import (
+    GenerateProductDescriptionUseCase,
 )
 from app.features.product_intelligence.application.use_cases.get_product_intelligence import (
     GetProductIntelligenceUseCase,
@@ -42,6 +46,7 @@ from app.features.product_intelligence.domain.entities.product_intelligence impo
     Specification,
 )
 from app.features.product_intelligence.domain.exceptions import (
+    AIGenerationFailedError,
     InvalidProductIntelligenceError,
     ProductIntelligenceNotFoundError,
     ProductNotReadyForPublishingError,
@@ -49,6 +54,7 @@ from app.features.product_intelligence.domain.exceptions import (
 from app.features.product_intelligence.presentation.api.dependencies import (
     get_create_product_intelligence_use_case,
     get_delete_product_intelligence_use_case,
+    get_generate_product_description_use_case,
     get_get_product_intelligence_use_case,
     get_list_product_intelligence_use_case,
     get_mark_ready_for_publishing_use_case,
@@ -117,6 +123,15 @@ class CreateProductIntelligenceRequest(ProductIntelligenceFields):
 
 class UpdateProductIntelligenceRequest(ProductIntelligenceFields):
     pass
+
+
+class GeneratedDescriptionResponse(BaseModel):
+    """Deliberately not ProductIntelligenceResponse: generation never
+    saves anything, so returning the full product would wrongly imply it
+    did. The caller accepts a draft via the existing update endpoint."""
+
+    product_id: UUID
+    description: str
 
 
 class ProductIntelligenceResponse(BaseModel):
@@ -337,3 +352,31 @@ async def mark_ready_for_publishing(
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     return _to_response(result)
+
+
+@router.post(
+    "/{product_id}/generate-description",
+    response_model=GeneratedDescriptionResponse,
+    status_code=200,
+)
+async def generate_product_description(
+    product_id: UUID,
+    use_case: GenerateProductDescriptionUseCase = Depends(  # noqa: B008
+        get_generate_product_description_use_case
+    ),
+) -> GeneratedDescriptionResponse:
+    """Generates a draft only - nothing is saved. The frontend shows the
+    draft alongside the current description and calls the existing update
+    endpoint if the user explicitly accepts it."""
+    try:
+        result = await use_case.execute(
+            GenerateProductDescriptionRequestDTO(product_id=product_id)
+        )
+    except ProductIntelligenceNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except AIGenerationFailedError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    return GeneratedDescriptionResponse(
+        product_id=result.product_id, description=result.description
+    )

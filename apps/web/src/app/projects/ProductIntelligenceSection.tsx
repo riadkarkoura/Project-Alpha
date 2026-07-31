@@ -8,8 +8,10 @@ import { Label } from "@/components/ui/label";
 import {
   createProductIntelligence,
   deleteProductIntelligence,
+  generateProductDescription,
   listProductIntelligence,
   markProductIntelligenceReadyForPublishing,
+  updateProductIntelligence,
 } from "@/lib/api/productIntelligence";
 import type { ProductIntelligence } from "@project-alpha/types";
 
@@ -53,6 +55,14 @@ export function ProductIntelligenceSection({ projectId }: { projectId: string })
 
   const [actionErrors, setActionErrors] = useState<Record<string, string>>({});
   const [pendingActionIds, setPendingActionIds] = useState<Set<string>>(new Set());
+
+  // Generated descriptions are drafts only, kept in local state until the
+  // user explicitly accepts (saved via the normal update call) or discards
+  // (just cleared here) - generation never touches the saved product.
+  const [draftDescriptions, setDraftDescriptions] = useState<Record<string, string>>({});
+  const [generatingIds, setGeneratingIds] = useState<Set<string>>(new Set());
+  const [acceptingIds, setAcceptingIds] = useState<Set<string>>(new Set());
+  const [draftErrors, setDraftErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
     let cancelled = false;
@@ -161,6 +171,83 @@ export function ProductIntelligenceSection({ projectId }: { projectId: string })
       setPendingActionIds((ids) => {
         const next = new Set(ids);
         next.delete(productId);
+        return next;
+      });
+    }
+  }
+
+  async function handleGenerateDescription(productId: string) {
+    setGeneratingIds((ids) => new Set(ids).add(productId));
+    setDraftErrors((errors) => {
+      const next = { ...errors };
+      delete next[productId];
+      return next;
+    });
+
+    try {
+      const generated = await generateProductDescription(productId);
+      setDraftDescriptions((drafts) => ({ ...drafts, [productId]: generated.description }));
+    } catch {
+      setDraftErrors((errors) => ({
+        ...errors,
+        [productId]: "Something went wrong while generating a description. Please try again.",
+      }));
+    } finally {
+      setGeneratingIds((ids) => {
+        const next = new Set(ids);
+        next.delete(productId);
+        return next;
+      });
+    }
+  }
+
+  function handleDiscardDescription(productId: string) {
+    setDraftDescriptions((drafts) => {
+      const next = { ...drafts };
+      delete next[productId];
+      return next;
+    });
+  }
+
+  async function handleAcceptDescription(product: ProductIntelligence) {
+    const draft = draftDescriptions[product.id];
+    if (draft === undefined) {
+      return;
+    }
+
+    setAcceptingIds((ids) => new Set(ids).add(product.id));
+    setDraftErrors((errors) => {
+      const next = { ...errors };
+      delete next[product.id];
+      return next;
+    });
+
+    try {
+      const updated = await updateProductIntelligence(product.id, {
+        title: product.title,
+        subtitle: product.subtitle ?? undefined,
+        description: draft,
+        category: product.category ?? undefined,
+        tags: product.tags,
+        pricing: product.pricing
+          ? { amount: product.pricing.amount, currency: product.pricing.currency }
+          : undefined,
+      });
+      setProducts((current) => current.map((p) => (p.id === product.id ? updated : p)));
+      setDraftDescriptions((drafts) => {
+        const next = { ...drafts };
+        delete next[product.id];
+        return next;
+      });
+    } catch {
+      setDraftErrors((errors) => ({
+        ...errors,
+        [product.id]: "Something went wrong while saving the description. Please try again.",
+      }));
+    } finally {
+      setAcceptingIds((ids) => {
+        const next = new Set(ids);
+        next.delete(product.id);
         return next;
       });
     }
@@ -278,6 +365,10 @@ export function ProductIntelligenceSection({ projectId }: { projectId: string })
           {products.map((product) => {
             const isPending = pendingActionIds.has(product.id);
             const actionError = actionErrors[product.id];
+            const isGenerating = generatingIds.has(product.id);
+            const isAccepting = acceptingIds.has(product.id);
+            const draftDescription = draftDescriptions[product.id];
+            const draftError = draftErrors[product.id];
 
             return (
               <li
@@ -300,6 +391,13 @@ export function ProductIntelligenceSection({ projectId }: { projectId: string })
                 {product.tags.length > 0 && (
                   <p className="text-muted-foreground">{product.tags.join(", ")}</p>
                 )}
+
+                <div>
+                  <p className="font-medium">Description</p>
+                  <p className="text-muted-foreground">
+                    {product.description || "No description yet."}
+                  </p>
+                </div>
 
                 {actionError && (
                   <p role="alert" className="text-sm text-destructive">
@@ -328,7 +426,48 @@ export function ProductIntelligenceSection({ projectId }: { projectId: string })
                   >
                     Delete
                   </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={isGenerating}
+                    onClick={() => void handleGenerateDescription(product.id)}
+                  >
+                    {isGenerating ? "Generating..." : "Generate Description"}
+                  </Button>
                 </div>
+
+                {draftError && (
+                  <p role="alert" className="text-sm text-destructive">
+                    {draftError}
+                  </p>
+                )}
+
+                {draftDescription !== undefined && (
+                  <div className="flex flex-col gap-2 rounded-lg border border-border bg-muted/30 p-3">
+                    <p className="font-medium">Generated description (draft)</p>
+                    <p className="text-muted-foreground">{draftDescription}</p>
+                    <div className="flex gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        disabled={isAccepting}
+                        onClick={() => void handleAcceptDescription(product)}
+                      >
+                        {isAccepting ? "Saving..." : "Accept"}
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={isAccepting}
+                        onClick={() => handleDiscardDescription(product.id)}
+                      >
+                        Discard
+                      </Button>
+                    </div>
+                  </div>
+                )}
               </li>
             );
           })}

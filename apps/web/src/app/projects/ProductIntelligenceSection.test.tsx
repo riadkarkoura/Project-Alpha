@@ -5,8 +5,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createProductIntelligence,
   deleteProductIntelligence,
+  generateProductDescription,
   listProductIntelligence,
   markProductIntelligenceReadyForPublishing,
+  updateProductIntelligence,
 } from "@/lib/api/productIntelligence";
 
 import { ProductIntelligenceSection } from "./ProductIntelligenceSection";
@@ -17,12 +19,15 @@ vi.mock("@/lib/api/productIntelligence", () => ({
   updateProductIntelligence: vi.fn(),
   deleteProductIntelligence: vi.fn(),
   markProductIntelligenceReadyForPublishing: vi.fn(),
+  generateProductDescription: vi.fn(),
 }));
 
 const mockedCreate = vi.mocked(createProductIntelligence);
 const mockedList = vi.mocked(listProductIntelligence);
 const mockedDelete = vi.mocked(deleteProductIntelligence);
 const mockedMarkReady = vi.mocked(markProductIntelligenceReadyForPublishing);
+const mockedGenerate = vi.mocked(generateProductDescription);
+const mockedUpdate = vi.mocked(updateProductIntelligence);
 
 const PROJECT_ID = "11111111-1111-1111-1111-111111111111";
 
@@ -52,6 +57,8 @@ beforeEach(() => {
   mockedList.mockReset();
   mockedDelete.mockReset();
   mockedMarkReady.mockReset();
+  mockedGenerate.mockReset();
+  mockedUpdate.mockReset();
 
   mockedList.mockResolvedValue([]);
 });
@@ -167,5 +174,83 @@ describe("ProductIntelligenceSection", () => {
       expect(screen.queryByText("Bamboo Cutting Board")).not.toBeInTheDocument();
     });
     expect(mockedDelete).toHaveBeenCalledWith(BASE_PRODUCT.id);
+  });
+
+  it("generates a draft description without saving it", async () => {
+    mockedList.mockResolvedValue([BASE_PRODUCT]);
+    mockedGenerate.mockResolvedValue({
+      product_id: BASE_PRODUCT.id,
+      description: "A lovely bamboo board.",
+    });
+
+    const user = userEvent.setup();
+    render(<ProductIntelligenceSection projectId={PROJECT_ID} />);
+    await screen.findByText("Bamboo Cutting Board");
+
+    await user.click(screen.getByRole("button", { name: "Generate Description" }));
+
+    expect(await screen.findByText("Generated description (draft)")).toBeInTheDocument();
+    expect(screen.getByText("A lovely bamboo board.")).toBeInTheDocument();
+    expect(screen.getByText("No description yet.")).toBeInTheDocument(); // saved value unchanged
+    expect(mockedUpdate).not.toHaveBeenCalled();
+  });
+
+  it("shows an error when generating a description fails", async () => {
+    mockedList.mockResolvedValue([BASE_PRODUCT]);
+    mockedGenerate.mockRejectedValue(new Error("network error"));
+
+    const user = userEvent.setup();
+    render(<ProductIntelligenceSection projectId={PROJECT_ID} />);
+    await screen.findByText("Bamboo Cutting Board");
+
+    await user.click(screen.getByRole("button", { name: "Generate Description" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Something went wrong while generating a description. Please try again."
+    );
+  });
+
+  it("accepts a generated draft and saves it via the update endpoint", async () => {
+    mockedList.mockResolvedValue([BASE_PRODUCT]);
+    mockedGenerate.mockResolvedValue({
+      product_id: BASE_PRODUCT.id,
+      description: "A lovely bamboo board.",
+    });
+    mockedUpdate.mockResolvedValue({ ...BASE_PRODUCT, description: "A lovely bamboo board." });
+
+    const user = userEvent.setup();
+    render(<ProductIntelligenceSection projectId={PROJECT_ID} />);
+    await screen.findByText("Bamboo Cutting Board");
+
+    await user.click(screen.getByRole("button", { name: "Generate Description" }));
+    await screen.findByText("Generated description (draft)");
+    await user.click(screen.getByRole("button", { name: "Accept" }));
+
+    expect(mockedUpdate).toHaveBeenCalledWith(
+      BASE_PRODUCT.id,
+      expect.objectContaining({ title: "Bamboo Cutting Board", description: "A lovely bamboo board." })
+    );
+    await waitFor(() => {
+      expect(screen.queryByText("Generated description (draft)")).not.toBeInTheDocument();
+    });
+  });
+
+  it("discards a generated draft without calling the API", async () => {
+    mockedList.mockResolvedValue([BASE_PRODUCT]);
+    mockedGenerate.mockResolvedValue({
+      product_id: BASE_PRODUCT.id,
+      description: "A lovely bamboo board.",
+    });
+
+    const user = userEvent.setup();
+    render(<ProductIntelligenceSection projectId={PROJECT_ID} />);
+    await screen.findByText("Bamboo Cutting Board");
+
+    await user.click(screen.getByRole("button", { name: "Generate Description" }));
+    await screen.findByText("Generated description (draft)");
+    await user.click(screen.getByRole("button", { name: "Discard" }));
+
+    expect(screen.queryByText("Generated description (draft)")).not.toBeInTheDocument();
+    expect(mockedUpdate).not.toHaveBeenCalled();
   });
 });

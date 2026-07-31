@@ -72,6 +72,21 @@ class ListProductIntelligenceRequestDTO:
 
 
 @dataclass(frozen=True)
+class GenerateProductDescriptionRequestDTO:
+    product_id: UUID
+
+
+@dataclass(frozen=True)
+class GeneratedProductDescriptionDTO:
+    """A draft, not a saved product field - generation never persists
+    anything. The caller (route/frontend) decides whether to accept it,
+    via the existing update flow."""
+
+    product_id: UUID
+    description: str
+
+
+@dataclass(frozen=True)
 class ProductIntelligenceDTO:
     id: UUID
     project_id: UUID

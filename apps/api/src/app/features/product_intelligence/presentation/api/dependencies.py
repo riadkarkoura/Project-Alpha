@@ -7,6 +7,9 @@ from app.features.product_intelligence.application.use_cases.create_product_inte
 from app.features.product_intelligence.application.use_cases.delete_product_intelligence import (
     DeleteProductIntelligenceUseCase,
 )
+from app.features.product_intelligence.application.use_cases.generate_product_description import (
+    GenerateProductDescriptionUseCase,
+)
 from app.features.product_intelligence.application.use_cases.get_product_intelligence import (
     GetProductIntelligenceUseCase,
 )
@@ -22,6 +25,9 @@ from app.features.product_intelligence.application.use_cases.update_product_inte
 from app.features.product_intelligence.domain.repositories.product_intelligence_repository import (
     ProductIntelligenceRepository,
 )
+from app.features.product_intelligence.infrastructure.ai.generate_description_capability import (
+    GenerateProductDescriptionCapability,
+)
 from app.features.product_intelligence.infrastructure.database.repositories.postgres_product_intelligence_repository import (  # noqa: E501
     PostgresProductIntelligenceRepository,
 )
@@ -34,6 +40,11 @@ from app.features.research_sessions.presentation.api.dependencies import (
     get_research_session_repository,
 )
 from app.infrastructure.database.connection import get_pool
+from app.shared.ai.application.capability_registry import AICapabilityRegistry
+from app.shared.ai.application.execution_engine import AIExecutionEngine
+from app.shared.ai.application.orchestrator import AIOrchestrator
+from app.shared.ai.application.provider_resolver import ProviderResolver
+from app.shared.ai.presentation.dependencies import get_ai_orchestrator, get_provider_resolver
 
 
 async def get_product_intelligence_repository(
@@ -95,3 +106,31 @@ def get_mark_ready_for_publishing_use_case(
     ),
 ) -> MarkReadyForPublishingUseCase:
     return MarkReadyForPublishingUseCase(product_repository)
+
+
+def get_product_intelligence_ai_execution_engine(
+    provider_resolver: ProviderResolver = Depends(get_provider_resolver),  # noqa: B008
+    orchestrator: AIOrchestrator = Depends(get_ai_orchestrator),  # noqa: B008
+) -> AIExecutionEngine:
+    """product_intelligence composes its own AIExecutionEngine rather than
+    using shared.ai's directly: it reuses shared.ai's provider
+    resolution/execution machinery, but registers its own capabilities into
+    a registry of its own. This keeps shared.ai unaware that
+    product_intelligence - or any capability - exists, which is the
+    dependency direction the whole AI architecture depends on: features
+    depend on shared.ai, never the reverse.
+    """
+    capability_registry = AICapabilityRegistry()
+    capability_registry.register(GenerateProductDescriptionCapability())
+    return AIExecutionEngine(capability_registry, provider_resolver, orchestrator)
+
+
+def get_generate_product_description_use_case(
+    product_repository: ProductIntelligenceRepository = Depends(  # noqa: B008
+        get_product_intelligence_repository
+    ),
+    ai_execution_engine: AIExecutionEngine = Depends(  # noqa: B008
+        get_product_intelligence_ai_execution_engine
+    ),
+) -> GenerateProductDescriptionUseCase:
+    return GenerateProductDescriptionUseCase(product_repository, ai_execution_engine)

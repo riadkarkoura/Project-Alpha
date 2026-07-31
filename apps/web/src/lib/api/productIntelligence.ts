@@ -49,3 +49,20 @@ export async function markProductIntelligenceReadyForPublishing(
     { method: "POST" }
   );
 }
+
+export interface GeneratedDescription {
+  product_id: string;
+  description: string;
+}
+
+// Generates a draft only - nothing is saved server-side. Persisting an
+// accepted draft is a normal updateProductIntelligence() call; there is no
+// separate "accept" endpoint.
+export async function generateProductDescription(
+  productId: string
+): Promise<GeneratedDescription> {
+  return apiFetch<GeneratedDescription>(
+    `/api/v1/product-intelligence/${productId}/generate-description`,
+    { method: "POST" }
+  );
+}
