@@ -1,10 +1,10 @@
 import pytest
 
+from app.shared.ai.application.provider_registry import AIProviderRegistry
 from app.shared.ai.domain.entities.ai_completion import AICompletionRequest, AICompletionResponse
 from app.shared.ai.domain.entities.ai_provider_name import AIProviderName
 from app.shared.ai.domain.exceptions import AIProviderNotConfiguredError
 from app.shared.ai.domain.providers.ai_provider import AIProvider
-from app.shared.ai.infrastructure.provider_registry import AIProviderRegistry
 from app.shared.ai.infrastructure.providers.mock_ai_provider import MockAIProvider
 
 
